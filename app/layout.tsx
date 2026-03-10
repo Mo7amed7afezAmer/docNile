@@ -11,6 +11,9 @@ export const metadata: Metadata = {
   title: "MedShield - Secure Medical Data De-Identification",
   description:
     "Enterprise-grade PHI removal for DICOM, imaging, and clinical data. HIPAA & GDPR compliant.",
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export const viewport: Viewport = {

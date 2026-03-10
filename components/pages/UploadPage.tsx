@@ -6,14 +6,14 @@ import {
   FileUp,
   X,
   Settings2,
-  Shield,
   Scan,
   FileText,
   Database,
 } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -25,37 +25,61 @@ const formatIcons: Record<string, typeof FileText> = {
 };
 
 const UploadPage = () => {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<any[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  const [options, setOptions] = useState({
-    removeMetadata: true,
-    faceAnonymization: true,
-    textRedaction: true,
-    customPHI: false,
-  });
-
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
   const router = useRouter();
 
-  // ✅ Handle File Selection (from PC)
+  // ---------------------------
+  // Upload Files
+  // ---------------------------
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    const selectedFiles = Array.from(e.target.files);
-    setFiles((prev) => [...prev, ...selectedFiles]);
+
+    const selected = Array.from(e.target.files).map((file: any) => {
+      file.relativePath = file.name;
+      return file;
+    });
+
+    setFiles((prev) => [...prev, ...selected]);
   };
 
-  // ✅ Drag & Drop
+  // ---------------------------
+  // Upload Folder
+  // ---------------------------
+  const handleFolderSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+
+    const folderFiles = Array.from(e.target.files).map((file: any) => {
+      file.relativePath = file.webkitRelativePath;
+      return file;
+    });
+
+    setFiles((prev) => [...prev, ...folderFiles]);
+  };
+
+  // ---------------------------
+  // Drag & Drop
+  // ---------------------------
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
-    const droppedFiles = Array.from(e.dataTransfer.files);
+    const droppedFiles = Array.from(e.dataTransfer.files).map((file: any) => {
+      file.relativePath = file.webkitRelativePath || file.name;
+      return file;
+    });
+
     setFiles((prev) => [...prev, ...droppedFiles]);
   }, []);
 
-  // ✅ Upload to API
+  // ---------------------------
+  // Upload to API
+  // ---------------------------
   const handleUpload = async () => {
     if (files.length === 0) return;
 
@@ -64,7 +88,10 @@ const UploadPage = () => {
     const formData = new FormData();
 
     files.forEach((file) => {
-      formData.append("files", file); // Must match backend key
+      const path =
+        file.relativePath || file.webkitRelativePath || file.name;
+
+      formData.append("files", file, path);
     });
 
     try {
@@ -77,16 +104,51 @@ const UploadPage = () => {
 
       if (data.batch_id) {
         sessionStorage.setItem("batch_id", data.batch_id);
-        router.push(`/processing`);
+        router.push("/processing");
       } else {
         alert("Upload failed");
       }
     } catch (error) {
-      console.error("Upload error:", error);
-      alert("Error uploading files");
-    } finally {
-      setIsUploading(false);
+      console.error(error);
+      alert("Upload error");
     }
+
+    setIsUploading(false);
+  };
+  const handleUploadReports = async () => {
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+
+    const formData = new FormData();
+
+    files.forEach((file) => {
+      const path =
+        file.relativePath || file.webkitRelativePath || file.name;
+
+      formData.append("files", file, path);
+    });
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/upreports", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.batch_id) {
+        sessionStorage.setItem("batch_id", data.batch_id);
+        router.push("/analysis");
+      } else {
+        alert("Upload failed");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Upload error");
+    }
+
+    setIsUploading(false);
   };
 
   return (
@@ -97,8 +159,8 @@ const UploadPage = () => {
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Upload Data</h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <h1 className="text-2xl font-bold">Upload Data</h1>
+        <p className="text-sm text-muted-foreground">
           Upload medical files for secure de-identification
         </p>
       </div>
@@ -106,72 +168,90 @@ const UploadPage = () => {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Upload Zone */}
         <div className="lg:col-span-2 space-y-4">
+
           <div
-            onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => {
               e.preventDefault();
               setIsDragging(true);
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-200 ${
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50 hover:bg-muted/30"
-            }`}
+            className={`border-2 border-dashed rounded-2xl p-12 text-center transition ${isDragging
+              ? "border-primary bg-primary/5"
+              : "border-border"
+              }`}
           >
-            {/* Hidden Input */}
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-
             <div className="flex flex-col items-center gap-3">
-              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10">
-                <UploadIcon className="w-7 h-7 text-primary" />
-              </div>
-              <div>
-                <p className="text-foreground font-semibold">
-                  Drop files here or click to browse
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Supports DICOM, NIfTI, PDF, CSV · Max 2GB per file
-                </p>
+              <UploadIcon className="w-8 h-8 text-primary" />
+
+              <p className="font-semibold">
+                Drag files or folder here
+              </p>
+
+              <div className="flex gap-3">
+
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload Files
+                </Button>
+
+                <Button
+                  onClick={() => folderInputRef.current?.click()}
+                >
+                  Upload Folder
+                </Button>
+
               </div>
             </div>
           </div>
 
+          {/* hidden inputs */}
+
+          <input
+            type="file"
+            multiple
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          <input
+            type="file"
+            multiple
+            //@ts-ignore
+            webkitdirectory="true"
+            ref={folderInputRef}
+            onChange={handleFolderSelect}
+            className="hidden"
+          />
+
           {/* File List */}
+
           <AnimatePresence>
             {files.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-2"
-              >
+              <motion.div className="space-y-2">
+
                 {files.map((file, i) => {
                   const type =
                     file.name.split(".").pop()?.toUpperCase() || "UNKNOWN";
+
                   const Icon = formatIcons[type] || FileText;
 
                   return (
                     <div
                       key={i}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/60"
+                      className="flex items-center gap-3 p-3 rounded-xl border"
                     >
-                      <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                        <Icon className="w-4 h-4 text-primary" />
-                      </div>
+                      <Icon className="w-4 h-4 text-primary" />
 
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {file.name}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {file.relativePath}
                         </p>
+
                         <p className="text-xs text-muted-foreground">
-                          {type} · {(file.size / 1024 / 1024).toFixed(1)} MB
+                          {(file.size / 1024 / 1024).toFixed(2)} MB
                         </p>
                       </div>
 
@@ -181,36 +261,48 @@ const UploadPage = () => {
                             prev.filter((_, index) => index !== i)
                           )
                         }
-                        className="text-muted-foreground hover:text-destructive"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
                   );
                 })}
+
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Options + Button */}
-        <Card className="shadow-card border-border/60 h-fit">
+        {/* Upload Button */}
+
+        <Card>
           <CardHeader>
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-primary" />
-              De-identification Options
-            </CardTitle>
+            <CardTitle>Processing</CardTitle>
           </CardHeader>
 
           <CardContent>
+
             <Button
               onClick={handleUpload}
               disabled={files.length === 0 || isUploading}
-              className="w-full gradient-primary text-primary-foreground font-semibold gap-2"
+              className="w-full"
             >
-              <FileUp className="w-4 h-4" />
+              <FileUp className="w-4 h-4 mr-2" />
               {isUploading ? "Uploading..." : "Start Processing"}
             </Button>
+
+          </CardContent>
+          <CardContent>
+
+            <Button
+              onClick={handleUploadReports}
+              disabled={files.length === 0 || isUploading}
+              className="w-full"
+            >
+              <FileUp className="w-4 h-4 mr-2" />
+              {isUploading ? "Uploading..." : "Start analysis"}
+            </Button>
+
           </CardContent>
         </Card>
       </div>

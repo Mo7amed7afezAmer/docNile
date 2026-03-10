@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/login/page": "/login",
+  "/page": "/",
+  "/(dashboard)/analysis/page": "/analysis",
+  "/(dashboard)/audit/page": "/audit",
+  "/(dashboard)/preview/page": "/preview",
+  "/(dashboard)/dashboard/page": "/dashboard",
+  "/(dashboard)/processing/[batch_id]/page": "/processing/[batch_id]",
+  "/(dashboard)/processing/page": "/processing",
+  "/(dashboard)/settings/page": "/settings",
+  "/(dashboard)/upload/page": "/upload"
+}

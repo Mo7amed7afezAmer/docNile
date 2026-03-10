@@ -7,7 +7,7 @@ import uuid
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse
 from typing import Dict,List
-from services.deid_service import process_pdf_file
+from backend.services.deid_service import process_medical_file,analytics_medical_file
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Medical De-Identification API")
@@ -39,10 +39,10 @@ jobs: Dict[str, dict] = {}
 
 
 # ---------------------------------
-# Upload & Start Processing
+# Upload & Start analytics
 # ---------------------------------
-@app.post("/upload")
-async def upload_files(
+@app.post("/upreports")
+async def upload_folder(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...)
 ):
@@ -50,43 +50,125 @@ async def upload_files(
 
     jobs[batch_id] = {
         "status": "processing",
-        "files": [],
+        "files": []
     }
 
     for file in files:
+
         file_id = str(uuid.uuid4())
 
-        input_path = os.path.join(INPUT_FOLDER, f"{file_id}.pdf")
-        output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.pdf")
+        # folder path sent from frontend
+        relative_path = file.filename
 
+        input_path = os.path.join(INPUT_FOLDER, relative_path)
+        output_path = os.path.join(OUTPUT_FOLDER, relative_path)
+
+        os.makedirs(os.path.dirname(input_path), exist_ok=True)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # save uploaded file
         with open(input_path, "wb") as f:
             f.write(await file.read())
 
         file_job = {
             "file_id": file_id,
-            "filename": file.filename,
+            "filename": relative_path,
             "status": "processing",
             "progress": 0,
             "phi_removed": 0,
             "logs": [],
-            "output_path": output_path,
+            "analytics": {},   # place to store analytics
+            "output_path": output_path
         }
 
         jobs[batch_id]["files"].append(file_job)
 
+        # Run analytics + de-identification in background
         background_tasks.add_task(
-            process_pdf_file,
+            analytics_medical_file,   # ← replaced here
             batch_id,
             file_id,
             input_path,
             output_path,
-            jobs,
+            jobs
         )
 
     return {
         "batch_id": batch_id,
         "total_files": len(files)
     }
+# ---------------------------------
+# Upload & Start Processing
+# ---------------------------------
+@app.post("/upload")
+async def upload_folder(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...)
+):
+    batch_id = str(uuid.uuid4())
+
+    jobs[batch_id] = {
+        "status": "processing",
+        "files": []
+    }
+
+    for file in files:
+
+        file_id = str(uuid.uuid4())
+
+        # folder path sent from frontend
+        relative_path = file.filename
+
+        input_path = os.path.join(INPUT_FOLDER, relative_path)
+        output_path = os.path.join(OUTPUT_FOLDER, relative_path)
+
+        os.makedirs(os.path.dirname(input_path), exist_ok=True)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        with open(input_path, "wb") as f:
+            f.write(await file.read())
+
+        file_job = {
+            "file_id": file_id,
+            "filename": relative_path,
+            "status": "processing",
+            "progress": 0,
+            "phi_removed": 0,
+            "logs": [],
+            "output_path": output_path
+        }
+
+        jobs[batch_id]["files"].append(file_job)
+
+        background_tasks.add_task(
+            process_medical_file,
+            batch_id,
+            file_id,
+            input_path,
+            output_path,
+            jobs
+        )
+
+    return {
+        "batch_id": batch_id,
+        "total_files": len(files)
+    }
+# ---------------------------------
+# read reports Status
+# ---------------------------------
+@app.get("/analytics/{batch_id}/{file_id}")
+def get_analytics(batch_id: str, file_id: str):
+
+    file_job = next(
+        (f for f in jobs[batch_id]["files"] if f["file_id"] == file_id),
+        None
+    )
+
+    if not file_job:
+        return {"error": "file not found"}
+
+    return file_job.get("analytics", {})
+
 
 # ---------------------------------
 # Get Job Status
